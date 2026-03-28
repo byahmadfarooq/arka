@@ -11,6 +11,8 @@ export default function Settings() {
   const [saved, setSaved] = useState(false)
   const [photoUrl, setPhotoUrl] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
+  const [sampleStatus, setSampleStatus] = useState('')
+  const [clearStatus, setClearStatus] = useState('')
 
   useEffect(() => {
     if (settings) {
@@ -57,6 +59,7 @@ export default function Settings() {
   }
 
   async function handleLoadSample() {
+    setSampleStatus('loading')
     const uid = user.id
     const today = new Date().toISOString().slice(0, 10)
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
@@ -95,8 +98,8 @@ export default function Settings() {
       { user_id: uid, type: 'task', action: 'Task Done', label: 'Completed: Update lead magnet PDF' }
     ])
 
-    alert('Sample data loaded!')
-    window.location.reload()
+    setSampleStatus('done')
+    setTimeout(() => setSampleStatus(''), 3000)
   }
 
   async function handleClearAll() {
@@ -106,8 +109,8 @@ export default function Settings() {
       await supabase.from(t).delete().eq('user_id', uid)
     }
     setConfirmClear(false)
-    alert('All data cleared.')
-    window.location.reload()
+    setClearStatus('done')
+    setTimeout(() => setClearStatus(''), 3000)
   }
 
   const er = form.exchange_rate || 278
@@ -196,8 +199,9 @@ export default function Settings() {
             <button className="btn-secondary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Download size={14} /> Export All Data
             </button>
-            <button className="btn-secondary" onClick={handleLoadSample} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Database size={14} /> Load Sample Data
+            <button className="btn-secondary" onClick={handleLoadSample} disabled={sampleStatus === 'loading'} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Database size={14} />
+              {sampleStatus === 'loading' ? 'Loading…' : sampleStatus === 'done' ? '✓ Sample Data Loaded' : 'Load Sample Data'}
             </button>
             <button className="btn-danger" onClick={() => setConfirmClear(true)} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Trash2 size={14} /> Clear All Data
@@ -233,6 +237,6 @@ const sectionHead = {
   fontWeight: 700,
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
-  color: 'var(--arka-gray)',
+  color: '#1A1A1A',
   marginBottom: 20
 }
