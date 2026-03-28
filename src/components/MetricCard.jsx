@@ -1,54 +1,25 @@
 import React from 'react'
 
-export default function MetricCard({ label, value, subLabel, icon: Icon, color = 'orange' }) {
-  const colorClass = `metric-value-${color}`
+const ICON_BG    = { orange: '#FEE8D6', blue: '#DBEAFE', green: '#DCFCE7', purple: '#EDE9FE', gray: '#F0ECE6' }
+const ICON_COLOR = { orange: '#F97316', blue: '#2563EB', green: '#16A34A', purple: '#7C3AED', gray: '#6B6B6B' }
 
+export default function MetricCard({ label, value, subLabel, icon: Icon, color = 'orange' }) {
   return (
-    <div className="card" style={styles.card}>
-      <div style={styles.top}>
+    <div className="card" style={{ padding: '18px 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
         <span className="display-label">{label}</span>
         {Icon && (
-          <div style={{ ...styles.iconWrap, background: `var(--arka-${color === 'orange' ? 'orange-light' : color === 'blue' ? '#DBEAFE' : color === 'green' ? '#DCFCE7' : '#EDE9FE'})` }}>
-            <Icon size={18} color={`var(--arka-${color})`} />
+          <div style={{
+            width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+            background: ICON_BG[color] || ICON_BG.orange,
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            <Icon size={17} color={ICON_COLOR[color] || ICON_COLOR.orange} strokeWidth={2} />
           </div>
         )}
       </div>
-      <div className={`metric-value ${colorClass}`} style={styles.value}>
-        {value ?? '—'}
-      </div>
-      {subLabel && (
-        <div style={styles.subLabel}>{subLabel}</div>
-      )}
+      <div className={`metric-value metric-value-${color}`}>{value ?? '—'}</div>
+      {subLabel && <div style={{ fontSize: 12, color: '#999', marginTop: 5 }}>{subLabel}</div>}
     </div>
   )
-}
-
-const styles = {
-  card: {
-    padding: '20px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8
-  },
-  top: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between'
-  },
-  iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: 'var(--arka-orange-light)'
-  },
-  value: {
-    marginTop: 4
-  },
-  subLabel: {
-    fontSize: 12,
-    color: 'var(--arka-gray)'
-  }
 }
