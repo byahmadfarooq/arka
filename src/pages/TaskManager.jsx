@@ -7,7 +7,8 @@ import Modal from '../components/Modal'
 import TagInput from '../components/TagInput'
 import DueDateBadge from '../components/DueDateBadge'
 import {
-  DndContext, closestCenter, PointerSensor, useSensor, useSensors
+  DndContext, DragOverlay, pointerWithin, rectIntersection,
+  PointerSensor, useSensor, useSensors, useDroppable
 } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -53,11 +54,12 @@ export default function TaskManager() {
   async function handleMove(taskId, newStatus) {
     const task = tasks.find(t => t.id === taskId)
     if (!task || task.status === newStatus) return
+    // Optimistic update — instant, no flash
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
     await supabase.from('tasks').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', taskId)
     if (newStatus === 'completed') {
       logActivity({ type: 'task', action: 'Task Done', label: `Completed: ${task.title}`, ref_id: taskId })
     }
-    fetchTasks()
   }
 
   async function handleDelete(id) {
@@ -119,9 +121,19 @@ export default function TaskManager() {
 }
 
 function TaskKanban({ tasks, columns, onMove, onEdit, onDelete, onAddCard, onTimerStop }) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+  const [activeId, setActiveId] = useState(null)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+  const activeTask = tasks.find(t => t.id === activeId)
+
+  function collisionDetection(args) {
+    const pointer = pointerWithin(args)
+    return pointer.length > 0 ? pointer : rectIntersection(args)
+  }
+
+  function handleDragStart({ active }) { setActiveId(active.id) }
 
   function handleDragEnd({ active, over }) {
+    setActiveId(null)
     if (!over || active.id === over.id) return
     const colIds = columns.map(c => c.id)
     if (colIds.includes(over.id)) {
@@ -133,7 +145,12 @@ function TaskKanban({ tasks, columns, onMove, onEdit, onDelete, onAddCard, onTim
   }
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={collisionDetection}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
       <div className="kanban-board" style={{ alignItems: 'flex-start' }}>
         {columns.map(col => {
           const colTasks = tasks.filter(t => t.status === col.id)
@@ -142,7 +159,6 @@ function TaskKanban({ tasks, columns, onMove, onEdit, onDelete, onAddCard, onTim
               key={col.id}
               column={col}
               tasks={colTasks}
-              onMove={onMove}
               onEdit={onEdit}
               onDelete={onDelete}
               onAddCard={onAddCard}
@@ -151,11 +167,32 @@ function TaskKanban({ tasks, columns, onMove, onEdit, onDelete, onAddCard, onTim
           )
         })}
       </div>
+
+      <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
+        {activeTask ? (
+          <div className="kanban-card" style={{
+            borderLeft: `3px solid ${PRIORITY_COLORS[activeTask.priority] || 'var(--arka-gray-light)'}`,
+            boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
+            transform: 'rotate(1.5deg)',
+            opacity: 0.96,
+            cursor: 'grabbing'
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--arka-black)', marginBottom: 4 }}>{activeTask.title}</div>
+            {activeTask.priority && (
+              <span style={{ fontSize: 10, fontWeight: 600, color: PRIORITY_COLORS[activeTask.priority], background: `${PRIORITY_COLORS[activeTask.priority]}18`, padding: '2px 6px', borderRadius: 999 }}>
+                {activeTask.priority}
+              </span>
+            )}
+          </div>
+        ) : null}
+      </DragOverlay>
     </DndContext>
   )
 }
 
 function TaskColumn({ column, tasks, onEdit, onDelete, onAddCard, onTimerStop }) {
+  const { setNodeRef, isOver } = useDroppable({ id: column.id })
+
   return (
     <div className="kanban-column" style={{ flex: 1, width: 'auto', minWidth: 260, maxWidth: 400 }}>
       <div className="kanban-column-header">
@@ -163,10 +200,20 @@ function TaskColumn({ column, tasks, onEdit, onDelete, onAddCard, onTimerStop })
         <span className="kanban-column-count">{tasks.length}</span>
       </div>
       <SortableContext items={tasks.map(t=>t.id)} strategy={verticalListSortingStrategy}>
-        <div className="kanban-cards">
+        <div
+          ref={setNodeRef}
+          className="kanban-cards"
+          style={{
+            minHeight: 80,
+            borderRadius: 8,
+            transition: 'background 0.15s, box-shadow 0.15s',
+            background: isOver ? 'rgba(249,115,22,0.06)' : undefined,
+            boxShadow: isOver ? 'inset 0 0 0 2px rgba(249,115,22,0.35)' : undefined
+          }}
+        >
           {tasks.length === 0 ? (
             <div style={{ fontSize: 12, color: 'var(--arka-gray)', textAlign: 'center', padding: '20px 0', opacity: 0.6 }}>
-              {column.id === 'todo' ? 'No tasks. Your Monday should start with work.' : 'Empty'}
+              Empty
             </div>
           ) : tasks.map(t => (
             <SortableTaskCard key={t.id} task={t} onEdit={onEdit} onDelete={onDelete} onTimerStop={onTimerStop} />
