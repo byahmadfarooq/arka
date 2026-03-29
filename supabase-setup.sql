@@ -11,6 +11,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ============================================================
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS embed_url text;
 ALTER TABLE content_pipeline ADD COLUMN IF NOT EXISTS embed_url text;
+ALTER TABLE content_pipeline ADD COLUMN IF NOT EXISTS post_id uuid REFERENCES posts(id);
 
 -- ============================================================
 -- TABLES

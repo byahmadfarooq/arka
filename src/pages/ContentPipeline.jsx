@@ -40,7 +40,26 @@ export default function ContentPipeline() {
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-    setItems(data || [])
+    const fetched = data || []
+
+    // Auto-sync: any Published item without a post_id → create the post now
+    const unsynced = fetched.filter(i => i.status === 'Published' && !i.post_id)
+    for (const item of unsynced) {
+      const { data: post } = await supabase.from('posts').insert({
+        user_id: user.id,
+        type: (item.format || 'text').toLowerCase(),
+        caption: item.body || item.title,
+        published_at: item.scheduled_date || new Date().toISOString().slice(0, 10),
+        tags: item.tags || [],
+        embed_url: item.embed_url || null
+      }).select().single()
+      if (post?.id) {
+        await supabase.from('content_pipeline').update({ post_id: post.id }).eq('id', item.id)
+        item.post_id = post.id
+      }
+    }
+
+    setItems(fetched)
     setLoading(false)
   }
 
@@ -49,16 +68,18 @@ export default function ContentPipeline() {
     if (!item || item.status === newStage) return
     await supabase.from('content_pipeline').update({ status: newStage }).eq('id', itemId)
 
-    if (newStage === 'Published') {
-      // Create draft in post_logger
-      await supabase.from('posts').insert({
+    if (newStage === 'Published' && !item.post_id) {
+      const { data: post } = await supabase.from('posts').insert({
         user_id: user.id,
         type: (item.format || 'text').toLowerCase(),
         caption: item.body || item.title,
-        published_at: new Date().toISOString().slice(0, 10),
+        published_at: item.scheduled_date || new Date().toISOString().slice(0, 10),
         tags: item.tags || [],
         embed_url: item.embed_url || null
-      })
+      }).select().single()
+      if (post?.id) {
+        await supabase.from('content_pipeline').update({ post_id: post.id }).eq('id', itemId)
+      }
       logActivity({ type: 'post', action: 'Published', label: `Published: ${(item.title || '').slice(0, 50)}` })
     }
     fetchItems()
