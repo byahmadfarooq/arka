@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { differenceInDays } from 'date-fns'
 import { supabase } from '../lib/supabase'
 import { useArka } from '../context/ArkaContext'
@@ -43,16 +43,14 @@ export default function InboundPipeline() {
     if (!lead || lead.stage === newStage) return
 
     const stageHistory = [...(lead.stage_history || []), { stage: newStage, changed_at: new Date().toISOString() }]
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stage: newStage, stage_history: stageHistory } : l))
 
     await supabase.from('inbound_leads').update({
-      stage: newStage,
-      stage_history: stageHistory,
-      updated_at: new Date().toISOString()
+      stage: newStage, stage_history: stageHistory, updated_at: new Date().toISOString()
     }).eq('id', leadId)
 
     const actionLabel = newStage === 'Closed Won' ? 'Won' : newStage === 'Closed Lost' ? 'Lost' : 'They Replied'
     logActivity({ type: 'inbound', action: actionLabel, label: `${actionLabel} - ${lead.lead_name}`, ref_id: leadId })
-    fetchLeads()
   }
 
   async function handleDelete(id) {
@@ -162,7 +160,7 @@ function InboundKanban({ leads, stages, onMove, onCardClick, onAddCard, er }) {
           const stageLeads = leads.filter(l => l.stage === stage)
           const stageValue = stageLeads.reduce((s,l) => s+(l.deal_value||0), 0)
           return (
-            <KanbanStageColumn key={stage} stage={stage} leads={stageLeads} stageValue={stageValue} onCardClick={onCardClick} onAddCard={onAddCard} er={er} />
+            <KanbanStageColumn key={stage} stage={stage} stages={stages} leads={stageLeads} stageValue={stageValue} onCardClick={onCardClick} onMove={onMove} onAddCard={onAddCard} er={er} />
           )
         })}
       </div>
@@ -170,10 +168,11 @@ function InboundKanban({ leads, stages, onMove, onCardClick, onAddCard, er }) {
   )
 }
 
-function SortableLeadCard({ lead, onCardClick }) {
+function SortableLeadCard({ lead, onCardClick, onMove, stages }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: lead.id })
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }
   const priorityBorderColor = PRIORITY_COLORS[lead.priority] || 'var(--arka-gray-light)'
+  const colIndex = stages.indexOf(lead.stage)
   const daysInStage = (() => {
     const hist = lead.stage_history || []
     const entry = hist.filter(h=>h.stage===lead.stage).pop()
@@ -182,27 +181,44 @@ function SortableLeadCard({ lead, onCardClick }) {
   })()
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style}>
       <div
         className={`kanban-card ${lead.stage === 'Closed Won' ? 'stage-won' : lead.stage === 'Closed Lost' ? 'stage-lost' : ''}`}
         style={{ borderLeft: `3px solid ${priorityBorderColor}` }}
-        onClick={() => onCardClick(lead)}
       >
-        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{lead.lead_name}</div>
-        {lead.company && <div style={{ fontSize: 11, color: 'var(--arka-gray)', marginBottom: 6 }}>{lead.company}</div>}
-        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--arka-blue)', marginBottom: 6 }}>
-          ${(lead.deal_value || 0).toLocaleString()}
+        <div {...attributes} {...listeners} style={{ cursor: 'grab' }} onClick={() => onCardClick(lead)}>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{lead.lead_name}</div>
+          {lead.company && <div style={{ fontSize: 11, color: 'var(--arka-gray)', marginBottom: 6 }}>{lead.company}</div>}
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--arka-blue)', marginBottom: 6 }}>
+            ${(lead.deal_value || 0).toLocaleString()}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {lead.source && <span className="badge badge-blue" style={{ fontSize: 10 }}>{lead.source}</span>}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--arka-gray)', marginTop: 6 }}>{daysInStage}d in stage</div>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {lead.source && <span className="badge badge-blue" style={{ fontSize: 10 }}>{lead.source}</span>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 2, marginTop: 8, borderTop: '1px solid var(--arka-gray-light)', paddingTop: 6 }}>
+          {colIndex > 0 && (
+            <button className="btn-icon" title={stages[colIndex - 1]}
+              onClick={e => { e.stopPropagation(); onMove(lead.id, stages[colIndex - 1]) }}
+              style={{ color: 'var(--arka-gray)', padding: '3px' }}>
+              <ChevronLeft size={14} />
+            </button>
+          )}
+          {colIndex < stages.length - 1 && (
+            <button className="btn-icon" title={stages[colIndex + 1]}
+              onClick={e => { e.stopPropagation(); onMove(lead.id, stages[colIndex + 1]) }}
+              style={{ color: 'var(--arka-blue)', padding: '3px' }}>
+              <ChevronRight size={14} />
+            </button>
+          )}
         </div>
-        <div style={{ fontSize: 10, color: 'var(--arka-gray)', marginTop: 6 }}>{daysInStage}d in stage</div>
       </div>
     </div>
   )
 }
 
-function KanbanStageColumn({ stage, leads, stageValue, onCardClick, onAddCard, er }) {
+function KanbanStageColumn({ stage, stages, leads, stageValue, onCardClick, onMove, onAddCard, er }) {
   return (
     <div className="kanban-column">
       <div className="kanban-column-header">
@@ -216,7 +232,7 @@ function KanbanStageColumn({ stage, leads, stageValue, onCardClick, onAddCard, e
       )}
       <SortableContext items={leads.map(l=>l.id)} strategy={verticalListSortingStrategy}>
         <div className="kanban-cards">
-          {leads.map(l => <SortableLeadCard key={l.id} lead={l} onCardClick={onCardClick} />)}
+          {leads.map(l => <SortableLeadCard key={l.id} lead={l} stages={stages} onCardClick={onCardClick} onMove={onMove} />)}
         </div>
       </SortableContext>
       <button className="kanban-add-btn" onClick={() => onAddCard(stage)}><Plus size={14} /> Add</button>
@@ -273,16 +289,33 @@ function LeadDetail({ lead, onClose, onMove, onDelete, onSave, er }) {
 function LeadForm({ userId, initial, initialStage, onSave, onCancel, logActivity }) {
   const [form, setForm] = useState({ lead_name:'',company:'',deal_value:'',stage:initialStage||'New Inquiry',source:'LinkedIn Post',priority:'Medium',content_source:'',tags:[],notes:'',...initial })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   function f(k,v){setForm(p=>({...p,[k]:v}))}
   async function handleSave(){
+    if (!form.lead_name.trim()) { setError('Lead name is required'); return }
     setSaving(true)
-    const payload={...form,deal_value:Number(form.deal_value)||0,user_id:userId,updated_at:new Date().toISOString()}
+    setError('')
+    const payload = {
+      user_id: userId,
+      lead_name: form.lead_name,
+      company: form.company || null,
+      deal_value: Number(form.deal_value) || 0,
+      stage: form.stage,
+      source: form.source,
+      priority: form.priority,
+      content_source: form.content_source || null,
+      tags: form.tags || [],
+      notes: form.notes || null,
+      updated_at: new Date().toISOString()
+    }
     if(!initial){
       payload.stage_history=[{stage:form.stage,changed_at:new Date().toISOString()}]
-      const {data}=await supabase.from('inbound_leads').insert(payload).select().single()
+      const {data, error: err}=await supabase.from('inbound_leads').insert(payload).select().single()
+      if (err) { setError(err.message); setSaving(false); return }
       logActivity?.({type:'inbound',action:'New Inquiry',label:`New Inquiry - ${form.lead_name}`,ref_id:data?.id})
     }else{
-      await supabase.from('inbound_leads').update(payload).eq('id',initial.id)
+      const {error: err}=await supabase.from('inbound_leads').update(payload).eq('id',initial.id)
+      if (err) { setError(err.message); setSaving(false); return }
     }
     setSaving(false);onSave()
   }
@@ -303,6 +336,7 @@ function LeadForm({ userId, initial, initialStage, onSave, onCancel, logActivity
       <div className="form-group"><label>Which content brought them?</label><input value={form.content_source||''} onChange={e=>f('content_source',e.target.value)} placeholder="Post title or link" /></div>
       <div className="form-group"><label>Tags</label><TagInput tags={form.tags||[]} onChange={tags=>f('tags',tags)} /></div>
       <div className="form-group"><label>Notes</label><textarea value={form.notes||''} onChange={e=>f('notes',e.target.value)} rows={3} /></div>
+      {error && <div style={{ background: '#FEE2E2', color: '#B91C1C', padding: '10px 14px', borderRadius: 7, fontSize: 13, marginBottom: 8 }}>{error}</div>}
       <div style={{display:'flex',gap:12,justifyContent:'flex-end'}}>
         <button className="btn-secondary" onClick={onCancel}>Cancel</button>
         <button className="btn-primary" onClick={handleSave} disabled={saving}>{saving?'Saving…':initial?'Save Changes':'Add Lead'}</button>
