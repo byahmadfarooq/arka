@@ -30,6 +30,7 @@ export default function ContentPipeline() {
   const [showAdd, setShowAdd] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [addStage, setAddStage] = useState('Ideas')
+  const hasSynced = React.useRef(false)
 
   useEffect(() => { if (user) fetchItems() }, [user])
 
@@ -41,26 +42,44 @@ export default function ContentPipeline() {
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
     const fetched = data || []
+    setItems(fetched)
+    setLoading(false)
 
-    // Auto-sync: any Published item without a post_id → create the post now
-    const unsynced = fetched.filter(i => i.status === 'Published' && !i.post_id)
-    for (const item of unsynced) {
+    // Only sync once per session to avoid duplicates
+    if (!hasSynced.current) {
+      hasSynced.current = true
+      await syncPublished(fetched)
+    }
+  }
+
+  async function syncPublished(fetched) {
+    const published = fetched.filter(i => i.status === 'Published')
+    if (published.length === 0) return
+
+    // Fetch existing posts to deduplicate by caption
+    const { data: existingPosts } = await supabase
+      .from('posts').select('id, caption').eq('user_id', user.id)
+    const existingCaptions = new Set(existingPosts?.map(p => p.caption) || [])
+
+    for (const item of published) {
+      const caption = item.body || item.title
+      // Skip if already synced (post_id exists) or post with same caption exists
+      if (item.post_id || existingCaptions.has(caption)) continue
+
       const { data: post } = await supabase.from('posts').insert({
         user_id: user.id,
         type: (item.format || 'text').toLowerCase(),
-        caption: item.body || item.title,
+        caption,
         published_at: item.scheduled_date || new Date().toISOString().slice(0, 10),
         tags: item.tags || [],
         embed_url: item.embed_url || null
       }).select().single()
+
       if (post?.id) {
         await supabase.from('content_pipeline').update({ post_id: post.id }).eq('id', item.id)
-        item.post_id = post.id
+        existingCaptions.add(caption)
       }
     }
-
-    setItems(fetched)
-    setLoading(false)
   }
 
   async function handleMove(itemId, newStage) {
