@@ -38,17 +38,22 @@ export default function Analytics() {
     const tasksData = tasks.data || []
 
     // Weekly impressions (last 8 weeks)
+    // For each week, take the highest impression value per post (not sum of all logs)
+    // to avoid double-counting multiple snapshots of the same post
     const weeklyImpressions = []
     for (let i = 7; i >= 0; i--) {
       const weekStart = subDays(new Date(), i * 7 + 7)
       const weekEnd = subDays(new Date(), i * 7)
-      const weekLogs = logs.filter(l => {
+      const bestPerPost = {}
+      logs.forEach(l => {
         const d = new Date(l.log_date)
-        return d >= weekStart && d <= weekEnd
+        if (d >= weekStart && d <= weekEnd) {
+          bestPerPost[l.post_id] = Math.max(bestPerPost[l.post_id] || 0, l.impressions || 0)
+        }
       })
       weeklyImpressions.push({
         week: format(weekEnd, 'MMM d'),
-        impressions: weekLogs.reduce((s, l) => s + (l.impressions || 0), 0)
+        impressions: Object.values(bestPerPost).reduce((s, v) => s + v, 0)
       })
     }
 
