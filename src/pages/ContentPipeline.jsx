@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Link } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useArka } from '../context/ArkaContext'
 import Modal from '../components/Modal'
@@ -9,6 +9,15 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+
+function parseLinkedInEmbed(raw) {
+  if (!raw || !raw.trim()) return ''
+  const trimmed = raw.trim()
+  if (trimmed.startsWith('https://www.linkedin.com/embed/')) return trimmed
+  const match = trimmed.match(/src=["']([^"']+)["']/)
+  if (match) return match[1]
+  return ''
+}
 
 const STAGES = ['Ideas', 'Drafting', 'Ready', 'Scheduled', 'Published']
 const FORMATS = ['Text', 'Image', 'Carousel']
@@ -47,7 +56,8 @@ export default function ContentPipeline() {
         type: (item.format || 'text').toLowerCase(),
         caption: item.body || item.title,
         published_at: new Date().toISOString().slice(0, 10),
-        tags: item.tags || []
+        tags: item.tags || [],
+        embed_url: item.embed_url || null
       })
       logActivity({ type: 'post', action: 'Published', label: `Published: ${(item.title || '').slice(0, 50)}` })
     }
@@ -134,10 +144,24 @@ function SortableContentCard({ item, onEdit, onDelete }) {
       <div className="kanban-card" onClick={() => onEdit(item)}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
           <span className={`badge badge-${FORMAT_COLORS[item.format] || 'gray'}`} style={{ fontSize: 10 }}>{item.format}</span>
+          {item.embed_url && <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#0077B5', fontWeight: 500 }}><Link size={9} /> Embed</span>}
           {item.scheduled_date && <span style={{ fontSize: 10, color: 'var(--arka-gray)' }}>{item.scheduled_date}</span>}
         </div>
         <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, lineHeight: 1.3 }}>{item.title}</div>
-        {item.body && (
+        {item.embed_url && (
+          <div style={{ marginBottom: 8, borderRadius: 7, overflow: 'hidden', border: '1px solid #E0DBD3' }}>
+            <iframe
+              src={item.embed_url}
+              height={160}
+              width="100%"
+              frameBorder={0}
+              allowFullScreen
+              title="LinkedIn post"
+              style={{ display: 'block', pointerEvents: 'none' }}
+            />
+          </div>
+        )}
+        {!item.embed_url && item.body && (
           <p style={{ fontSize: 11, color: 'var(--arka-gray)', lineHeight: 1.4, marginBottom: 6 }}>
             {item.body.slice(0, 100)}{item.body.length > 100 ? '…' : ''}
           </p>
@@ -186,14 +210,22 @@ function ContentColumn({ stage, items, onEdit, onDelete, onAddCard }) {
 function ContentForm({ userId, initial, onSave, onCancel }) {
   const [form, setForm] = useState({
     title: '', format: 'Text', status: 'Ideas', body: '', tags: [], scheduled_date: '', notes: '',
-    ...initial
+    embed_code: '', embed_url: '',
+    ...initial,
+    embed_code: initial?.embed_url || ''
   })
   const [saving, setSaving] = useState(false)
   function f(k,v){setForm(p=>({...p,[k]:v}))}
 
+  function handleEmbedCode(raw) {
+    f('embed_code', raw)
+    f('embed_url', parseLinkedInEmbed(raw))
+  }
+
   async function handleSave() {
     setSaving(true)
-    const payload = { user_id: userId, ...form }
+    const { embed_code, ...rest } = form
+    const payload = { user_id: userId, ...rest }
     if (initial?.id) {
       await supabase.from('content_pipeline').update(payload).eq('id', initial.id)
     } else {
@@ -203,6 +235,8 @@ function ContentForm({ userId, initial, onSave, onCancel }) {
     onSave()
   }
 
+  const embedParsed = parseLinkedInEmbed(form.embed_code)
+
   return (
     <>
       <div className="form-group"><label>Title / Hook Line *</label><input value={form.title} onChange={e=>f('title',e.target.value)} placeholder="5 things killing your LinkedIn reach" /></div>
@@ -210,6 +244,44 @@ function ContentForm({ userId, initial, onSave, onCancel }) {
         <div className="form-group"><label>Format</label><select value={form.format} onChange={e=>f('format',e.target.value)}>{FORMATS.map(f=><option key={f}>{f}</option>)}</select></div>
         <div className="form-group"><label>Status</label><select value={form.status} onChange={e=>f('status',e.target.value)}>{STAGES.map(s=><option key={s}>{s}</option>)}</select></div>
       </div>
+
+      {/* LinkedIn Embed */}
+      <div className="form-group">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Link size={11} /> LinkedIn Embed Code (optional)
+        </label>
+        <textarea
+          value={form.embed_code}
+          onChange={e => handleEmbedCode(e.target.value)}
+          rows={2}
+          placeholder={`Paste the <iframe> embed code from LinkedIn Share → Embed this post`}
+          style={{ fontFamily: 'monospace', fontSize: 11 }}
+        />
+        {embedParsed && (
+          <>
+            <div style={{ marginTop: 8, padding: 8, background: '#F0FDF4', border: '1px solid #DCFCE7', borderRadius: 7, fontSize: 12, color: '#15803D', display: 'flex', alignItems: 'center', gap: 6 }}>
+              ✓ Valid LinkedIn embed detected
+            </div>
+            <div style={{ marginTop: 10, borderRadius: 10, overflow: 'hidden', border: '1px solid #E0DBD3' }}>
+              <iframe
+                src={embedParsed}
+                height={400}
+                width="100%"
+                frameBorder={0}
+                allowFullScreen
+                title="LinkedIn post preview"
+                style={{ display: 'block' }}
+              />
+            </div>
+          </>
+        )}
+        {form.embed_code && !embedParsed && (
+          <div style={{ marginTop: 8, padding: 8, background: '#FEF3E8', border: '1px solid #FEE8D6', borderRadius: 7, fontSize: 12, color: '#C2590E' }}>
+            Could not parse embed URL — paste the full &lt;iframe&gt; code from LinkedIn
+          </div>
+        )}
+      </div>
+
       <div className="form-group"><label>Body / Draft Notes</label><textarea value={form.body||''} onChange={e=>f('body',e.target.value)} rows={4} placeholder="Write your draft here…" /></div>
       <div className="form-group"><label>Scheduled Date</label><input type="date" value={form.scheduled_date||''} onChange={e=>f('scheduled_date',e.target.value)} /></div>
       <div className="form-group"><label>Tags</label><TagInput tags={form.tags||[]} onChange={tags=>f('tags',tags)} /></div>

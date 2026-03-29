@@ -10,6 +10,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- MIGRATIONS (safe to run on existing databases)
 -- ============================================================
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS embed_url text;
+ALTER TABLE content_pipeline ADD COLUMN IF NOT EXISTS embed_url text;
 
 -- ============================================================
 -- TABLES

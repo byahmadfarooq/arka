@@ -404,9 +404,22 @@ function AddPostForm({ userId, initial, onSave, onCancel, logActivity }) {
           style={{ fontFamily: 'monospace', fontSize: 11 }}
         />
         {embedParsed && (
-          <div style={{ marginTop: 8, padding: 8, background: '#F0FDF4', border: '1px solid #DCFCE7', borderRadius: 7, fontSize: 12, color: '#15803D', display: 'flex', alignItems: 'center', gap: 6 }}>
-            ✓ Valid LinkedIn embed detected — post preview will show in card
-          </div>
+          <>
+            <div style={{ marginTop: 8, padding: 8, background: '#F0FDF4', border: '1px solid #DCFCE7', borderRadius: 7, fontSize: 12, color: '#15803D', display: 'flex', alignItems: 'center', gap: 6 }}>
+              ✓ Valid LinkedIn embed detected
+            </div>
+            <div style={{ marginTop: 10, borderRadius: 10, overflow: 'hidden', border: '1px solid #E0DBD3' }}>
+              <iframe
+                src={embedParsed}
+                height={400}
+                width="100%"
+                frameBorder={0}
+                allowFullScreen
+                title="LinkedIn post preview"
+                style={{ display: 'block' }}
+              />
+            </div>
+          </>
         )}
         {form.embed_code && !embedParsed && (
           <div style={{ marginTop: 8, padding: 8, background: '#FEF3E8', border: '1px solid #FEE8D6', borderRadius: 7, fontSize: 12, color: '#C2590E' }}>
