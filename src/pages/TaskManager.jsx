@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, Play, Square, Trash2, Edit3, Clock } from 'lucide-react'
+import { Plus, Play, Square, Trash2, Edit3, Clock, ChevronLeft, ChevronRight } from 'lucide-react'
 import { format, isPast, isToday, isTomorrow, isThisWeek, parseISO } from 'date-fns'
 import { supabase } from '../lib/supabase'
 import { useArka } from '../context/ArkaContext'
@@ -159,6 +159,7 @@ function TaskKanban({ tasks, columns, onMove, onEdit, onDelete, onAddCard, onTim
               key={col.id}
               column={col}
               tasks={colTasks}
+              onMove={onMove}
               onEdit={onEdit}
               onDelete={onDelete}
               onAddCard={onAddCard}
@@ -190,7 +191,7 @@ function TaskKanban({ tasks, columns, onMove, onEdit, onDelete, onAddCard, onTim
   )
 }
 
-function TaskColumn({ column, tasks, onEdit, onDelete, onAddCard, onTimerStop }) {
+function TaskColumn({ column, tasks, onMove, onEdit, onDelete, onAddCard, onTimerStop }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
 
   return (
@@ -216,7 +217,7 @@ function TaskColumn({ column, tasks, onEdit, onDelete, onAddCard, onTimerStop })
               Empty
             </div>
           ) : tasks.map(t => (
-            <SortableTaskCard key={t.id} task={t} onEdit={onEdit} onDelete={onDelete} onTimerStop={onTimerStop} />
+            <SortableTaskCard key={t.id} task={t} onMove={onMove} onEdit={onEdit} onDelete={onDelete} onTimerStop={onTimerStop} />
           ))}
         </div>
       </SortableContext>
@@ -225,14 +226,15 @@ function TaskColumn({ column, tasks, onEdit, onDelete, onAddCard, onTimerStop })
   )
 }
 
-function SortableTaskCard({ task, onEdit, onDelete, onTimerStop }) {
+function SortableTaskCard({ task, onEdit, onDelete, onTimerStop, onMove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : 1 }
   const { running, elapsedFormatted, start, stop } = useTaskTimer(task.id, onTimerStop)
 
   const priorityColor = PRIORITY_COLORS[task.priority] || 'var(--arka-gray-light)'
   const isCompleted = task.status === 'completed'
-  const totalTime = (task.total_seconds || 0) + (running ? 0 : 0)
+  const totalTime = task.total_seconds || 0
+  const colIndex = COLUMNS.findIndex(c => c.id === task.status)
 
   function getDueBorder() {
     if (!task.due_date) return priorityColor
@@ -246,22 +248,12 @@ function SortableTaskCard({ task, onEdit, onDelete, onTimerStop }) {
     <div ref={setNodeRef} style={style}>
       <div
         className="kanban-card"
-        style={{
-          borderLeft: `3px solid ${getDueBorder()}`,
-          opacity: isCompleted ? 0.75 : 1
-        }}
+        style={{ borderLeft: `3px solid ${getDueBorder()}`, opacity: isCompleted ? 0.75 : 1 }}
       >
-        {/* Drag handle area — stop propagation of edit click */}
-        <div {...attributes} {...listeners} style={{ cursor: 'grab' }}>
+        {/* Drag handle — whole top area */}
+        <div {...attributes} {...listeners} style={{ cursor: 'grab', userSelect: 'none' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-            <span style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: 'var(--arka-black)',
-              textDecoration: isCompleted ? 'line-through' : 'none',
-              flex: 1,
-              marginRight: 8
-            }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--arka-black)', textDecoration: isCompleted ? 'line-through' : 'none', flex: 1, marginRight: 8 }}>
               {task.title}
             </span>
             <span style={{ fontSize: 10, fontWeight: 600, color: PRIORITY_COLORS[task.priority], background: `${PRIORITY_COLORS[task.priority]}18`, padding: '2px 6px', borderRadius: 999, whiteSpace: 'nowrap' }}>
@@ -270,7 +262,9 @@ function SortableTaskCard({ task, onEdit, onDelete, onTimerStop }) {
           </div>
 
           {task.description && (
-            <p style={{ fontSize: 12, color: 'var(--arka-gray)', marginBottom: 8, lineHeight: 1.4 }}>{task.description.slice(0,80)}{task.description.length>80?'…':''}</p>
+            <p style={{ fontSize: 12, color: 'var(--arka-gray)', marginBottom: 8, lineHeight: 1.4 }}>
+              {task.description.slice(0, 80)}{task.description.length > 80 ? '…' : ''}
+            </p>
           )}
 
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -285,24 +279,38 @@ function SortableTaskCard({ task, onEdit, onDelete, onTimerStop }) {
           )}
         </div>
 
-        {/* Time tracking */}
-        <div style={{ display: 'flex', align: 'center', gap: 8, borderTop: '1px solid var(--arka-gray-light)', paddingTop: 8, marginTop: 4 }}>
+        {/* Bottom row: timer + move arrows + actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderTop: '1px solid var(--arka-gray-light)', paddingTop: 8, marginTop: 4 }}>
+          {/* Timer */}
           {!isCompleted && (
-            <button
-              className="btn-icon"
-              onClick={e => { e.stopPropagation(); running ? stop() : start() }}
-              style={{ color: running ? 'var(--arka-red)' : 'var(--arka-green)', background: running ? '#FEE2E2' : '#DCFCE7' }}
-            >
+            <button className="btn-icon" onClick={e => { e.stopPropagation(); running ? stop() : start() }}
+              style={{ color: running ? 'var(--arka-red)' : 'var(--arka-green)', background: running ? '#FEE2E2' : '#DCFCE7' }}>
               {running ? <Square size={12} /> : <Play size={12} />}
             </button>
           )}
-          {running && <span className="timer-display" style={{ fontSize: 13 }}>{elapsedFormatted}</span>}
-          {totalTime > 0 && (
+          {running && <span className="timer-display" style={{ fontSize: 12 }}>{elapsedFormatted}</span>}
+          {totalTime > 0 && !running && (
             <span style={{ fontSize: 11, color: 'var(--arka-gray)', display: 'flex', alignItems: 'center', gap: 3 }}>
               <Clock size={10} /> {formatTime(totalTime)}
             </span>
           )}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
+            {/* Move left/right */}
+            {colIndex > 0 && (
+              <button className="btn-icon" title={`Move to ${COLUMNS[colIndex - 1].label}`}
+                onClick={e => { e.stopPropagation(); onMove(task.id, COLUMNS[colIndex - 1].id) }}
+                style={{ color: 'var(--arka-gray)', padding: '4px' }}>
+                <ChevronLeft size={14} />
+              </button>
+            )}
+            {colIndex < COLUMNS.length - 1 && (
+              <button className="btn-icon" title={`Move to ${COLUMNS[colIndex + 1].label}`}
+                onClick={e => { e.stopPropagation(); onMove(task.id, COLUMNS[colIndex + 1].id) }}
+                style={{ color: 'var(--arka-orange)', padding: '4px' }}>
+                <ChevronRight size={14} />
+              </button>
+            )}
             <button className="btn-icon" onClick={e => { e.stopPropagation(); onEdit(task) }}><Edit3 size={13} /></button>
             <button className="btn-icon" onClick={e => { e.stopPropagation(); onDelete(task.id) }} style={{ color: 'var(--arka-red)' }}><Trash2 size={13} /></button>
           </div>
